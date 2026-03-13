@@ -1,0 +1,61 @@
+// See https://pris.ly/d/prisma-schema for more info
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RestaurantPlan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+model Restaurant {
+  id           String         @id @default(uuid())
+  name         String
+  plan         RestaurantPlan
+  qrCode       String         @unique
+  customDomain String?        @map("custom_domain")
+  slug         String?        @unique
+  subdomain    String?        @unique
+  qrScans      QrScanLog[]
+  qrScanDaily  QrScanDaily[]
+
+  @@map("restaurants")
+}
+
+model QrScanLog {
+  id           String   @id @default(cuid())
+  restaurantId String
+  qrCode       String
+  tableCode    String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, createdAt])
+  @@map("qr_scan_logs")
+}
+
+model QrScanDaily {
+  id           String   @id @default(cuid())
+  restaurantId String
+  tableCode    String?
+  day          DateTime
+  scanCount    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, tableCode, day])
+  @@index([restaurantId, day])
+  @@map("qr_scan_daily")
+}
