@@ -5,6 +5,20 @@ import qrRouter from './routes/qr';
 
 const app = express();
 
+const trustProxyEnv = process.env.TRUST_PROXY;
+if (trustProxyEnv !== undefined) {
+  const normalized = trustProxyEnv.trim().toLowerCase();
+  const asNumber = Number(normalized);
+  if (!Number.isNaN(asNumber) && normalized !== '') {
+    app.set('trust proxy', asNumber);
+  } else {
+    app.set('trust proxy', normalized === 'true');
+  }
+} else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+  // Common proxy setups (e.g. Vercel) add X-Forwarded-For.
+  app.set('trust proxy', 1);
+}
+
 app.use(express.json({ limit: '1mb' }));
 app.use(createRateLimiter());
 
