@@ -8,6 +8,21 @@ const rateLimit_1 = require("./middleware/rateLimit");
 const errorHandler_1 = require("./middleware/errorHandler");
 const qr_1 = __importDefault(require("./routes/qr"));
 const app = (0, express_1.default)();
+const trustProxyEnv = process.env.TRUST_PROXY;
+if (trustProxyEnv !== undefined) {
+    const normalized = trustProxyEnv.trim().toLowerCase();
+    const asNumber = Number(normalized);
+    if (!Number.isNaN(asNumber) && normalized !== '') {
+        app.set('trust proxy', asNumber);
+    }
+    else {
+        app.set('trust proxy', normalized === 'true');
+    }
+}
+else if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    // Common proxy setups (e.g. Vercel) add X-Forwarded-For.
+    app.set('trust proxy', 1);
+}
 app.use(express_1.default.json({ limit: '1mb' }));
 app.use((0, rateLimit_1.createRateLimiter)());
 app.get('/health', (_req, res) => {

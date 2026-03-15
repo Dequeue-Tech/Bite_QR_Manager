@@ -37,68 +37,74 @@ async function resolveRedirect(code, ip, userAgent) {
     });
     if (!restaurant)
         return null;
+    const url = (0, redirectBuilder_1.buildRedirectUrl)(restaurant, parsed.tableCode);
+    if (!url)
+        return null;
     await cache_1.cache.set(cacheKey, JSON.stringify(restaurant), CACHE_TTL_SECONDS);
     if (process.env.ENABLE_QR_ANALYTICS === '1') {
-        try {
-            const day = new Date();
-            day.setUTCHours(0, 0, 0, 0);
-            await prisma_1.prisma.qrScanLog.create({
-                data: {
-                    restaurantId: restaurant.id,
-                    qrCode: parsed.restaurantCode,
-                    tableCode: parsed.tableCode || null,
-                    ip: ip || null,
-                    userAgent: userAgent || null,
+        // Fire-and-forget to keep redirects fast.
+        void logQrScan(restaurant.id, parsed.restaurantCode, parsed.tableCode, ip, userAgent);
+    }
+    return { url };
+}
+async function logQrScan(restaurantId, restaurantCode, tableCode, ip, userAgent) {
+    try {
+        const day = new Date();
+        day.setUTCHours(0, 0, 0, 0);
+        await prisma_1.prisma.qrScanLog.create({
+            data: {
+                restaurantId,
+                qrCode: restaurantCode,
+                tableCode: tableCode || null,
+                ip: ip || null,
+                userAgent: userAgent || null,
+            },
+        });
+        if (tableCode) {
+            await prisma_1.prisma.qrScanDaily.upsert({
+                where: {
+                    restaurantId_tableCode_day: {
+                        restaurantId,
+                        tableCode,
+                        day,
+                    },
+                },
+                create: {
+                    restaurantId,
+                    tableCode,
+                    day,
+                    scanCount: 1,
+                },
+                update: {
+                    scanCount: { increment: 1 },
                 },
             });
-            if (parsed.tableCode) {
-                await prisma_1.prisma.qrScanDaily.upsert({
-                    where: {
-                        restaurantId_tableCode_day: {
-                            restaurantId: restaurant.id,
-                            tableCode: parsed.tableCode,
-                            day,
-                        },
-                    },
-                    create: {
-                        restaurantId: restaurant.id,
-                        tableCode: parsed.tableCode,
+        }
+        else {
+            const updated = await prisma_1.prisma.qrScanDaily.updateMany({
+                where: {
+                    restaurantId,
+                    tableCode: null,
+                    day,
+                },
+                data: {
+                    scanCount: { increment: 1 },
+                },
+            });
+            if (updated.count === 0) {
+                await prisma_1.prisma.qrScanDaily.create({
+                    data: {
+                        restaurantId,
+                        tableCode: null,
                         day,
                         scanCount: 1,
                     },
-                    update: {
-                        scanCount: { increment: 1 },
-                    },
                 });
             }
-            else {
-                const updated = await prisma_1.prisma.qrScanDaily.updateMany({
-                    where: {
-                        restaurantId: restaurant.id,
-                        tableCode: null,
-                        day,
-                    },
-                    data: {
-                        scanCount: { increment: 1 },
-                    },
-                });
-                if (updated.count === 0) {
-                    await prisma_1.prisma.qrScanDaily.create({
-                        data: {
-                            restaurantId: restaurant.id,
-                            tableCode: null,
-                            day,
-                            scanCount: 1,
-                        },
-                    });
-                }
-            }
-        }
-        catch (err) {
-            // analytics should never block redirects
-            console.warn('Failed to log QR scan', err);
         }
     }
-    const url = (0, redirectBuilder_1.buildRedirectUrl)(restaurant, parsed.tableCode);
-    return url ? { url } : null;
+    catch (err) {
+        // analytics should never block redirects
+        console.warn('Failed to log QR scan', err);
+    }
 }
